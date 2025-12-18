@@ -12,6 +12,10 @@ class WeatherBot:
     def __init__(self):
         self.weather_api_url = "http://api.weatherapi.com/v1/current.json"
         self.last_cities = []
+        self.city_images_folder = "saved_city_images"
+
+        if not os.path.exists(self.city_images_folder):
+            os.makedirs(self.city_images_folder)
 
     def get_keyboard(self):
         if not self.last_cities:
@@ -46,7 +50,7 @@ class WeatherBot:
                 text = self.make_weather_text(weather)
 
                 english_name = weather['location']['region']
-                sent_pic = await self.send_unsplash_pic(update, city, english_name)
+                sent_pic = await self.send_city_pic(update, city, english_name)
 
                 await update.message.reply_text(text, parse_mode='HTML', reply_markup=self.get_keyboard())
 
@@ -96,8 +100,23 @@ class WeatherBot:
 
         return text
 
-    async def send_unsplash_pic(self, update: Update, city: str, english_name: str) -> bool:
+    def get_city_filename(self, city: str) -> str:
+        city_normalized = city.lower().replace(' ', '_').replace('-', '_')
+        return os.path.join(self.city_images_folder, f"{city_normalized}.jpg")
+
+    async def send_city_pic(self, update: Update, city: str, english_name: str) -> bool:
         try:
+            filename = self.get_city_filename(city)
+
+            if os.path.exists(filename):
+                with open(filename, 'rb') as f:
+                    await update.message.reply_photo(
+                        photo=InputFile(f),
+                        caption=f"🏙️ {city}",
+                        reply_markup=self.get_keyboard()
+                    )
+                return True
+
             search_url = f"https://api.unsplash.com/search/photos"
             params = {
                 'query': f"{english_name} city",
@@ -113,16 +132,20 @@ class WeatherBot:
 
                 image_response = requests.get(image_url, timeout=10)
 
-                await update.message.reply_photo(
-                    photo=image_response.content,
-                    caption=f"🏙️ {city}",
-                    reply_markup=self.get_keyboard()
-                )
+                with open(filename, 'wb') as f:
+                    f.write(image_response.content)
+
+                with open(filename, 'rb') as f:
+                    await update.message.reply_photo(
+                        photo=InputFile(f),
+                        caption=f"🏙️ {city}",
+                        reply_markup=self.get_keyboard()
+                    )
                 return True
             return False
 
         except Exception as e:
-            print(f"Ошибка Unsplash: {e}")
+            print(f"Ошибка: {e}")
             return False
 
 
