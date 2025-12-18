@@ -5,16 +5,13 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 BOT_TOKEN = "8554206583:AAHEFxTe1O1svGNrJHR-9rffvzgjc_IXVkA"
 WEATHER_API_KEY = "6f361e789c23484a80873013252011"
+UNSPLASH_ACCESS_KEY = "QAyQ7hC6D4KCcPCABDccc7j2qGwpBw98kGAJwxxLBDs"
 
 
 class WeatherBot:
     def __init__(self):
         self.weather_api_url = "http://api.weatherapi.com/v1/current.json"
-        self.image_folder = "city_images"
         self.last_cities = []
-
-        if not os.path.exists(self.image_folder):
-            os.makedirs(self.image_folder)
 
     def get_keyboard(self):
         if not self.last_cities:
@@ -34,7 +31,7 @@ class WeatherBot:
         city = update.message.text.strip()
 
         if not city:
-            await update.message.reply_text("Где живешь?")
+            await update.message.reply_text("Напиши город...")
             return
 
         try:
@@ -48,7 +45,8 @@ class WeatherBot:
 
                 text = self.make_weather_text(weather)
 
-                sent_pic = await self.send_pic(update, city)
+                english_name = weather['location']['region']
+                sent_pic = await self.send_unsplash_pic(update, city, english_name)
 
                 await update.message.reply_text(text, parse_mode='HTML', reply_markup=self.get_keyboard())
 
@@ -98,30 +96,33 @@ class WeatherBot:
 
         return text
 
-    async def send_pic(self, update: Update, city: str) -> bool:
+    async def send_unsplash_pic(self, update: Update, city: str, english_name: str) -> bool:
         try:
-            name = city.lower().replace(' ', '_').replace('-', '_')
+            search_url = f"https://api.unsplash.com/search/photos"
+            params = {
+                'query': f"{english_name} city",
+                'client_id': UNSPLASH_ACCESS_KEY,
+                'per_page': 1
+            }
 
-            exts = ['.jpg', '.jpeg', '.png', '.webp']
-            path = None
+            response = requests.get(search_url, params=params, timeout=10)
+            data = response.json()
 
-            for ext in exts:
-                test = os.path.join(self.image_folder, f"{name}{ext}")
-                if os.path.exists(test):
-                    path = test
-                    break
+            if data['results']:
+                image_url = data['results'][0]['urls']['regular']
 
-            if path:
-                with open(path, 'rb') as f:
-                    await update.message.reply_photo(
-                        photo=InputFile(f),
-                        caption=f"🏙️ {city}",
-                        reply_markup=self.get_keyboard()
-                    )
+                image_response = requests.get(image_url, timeout=10)
+
+                await update.message.reply_photo(
+                    photo=image_response.content,
+                    caption=f"🏙️ {city}",
+                    reply_markup=self.get_keyboard()
+                )
                 return True
             return False
 
-        except:
+        except Exception as e:
+            print(f"Ошибка Unsplash: {e}")
             return False
 
 
